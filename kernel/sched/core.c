@@ -1120,7 +1120,7 @@ static __always_inline bool dynamic_preempt_lazy(void)
 #else
 static __always_inline bool dynamic_preempt_lazy(void)
 {
-	return IS_ENABLED(PREEMPT_LAZY);
+	return IS_ENABLED(CONFIG_PREEMPT_LAZY);
 }
 #endif
 
