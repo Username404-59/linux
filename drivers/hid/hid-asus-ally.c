@@ -91,6 +91,8 @@ static const struct btn_code_map ally_btn_codes[] = {
 	{ BTN_KB_F10, "KB_F10" },
 	{ BTN_KB_F11, "KB_F11" },
 	{ BTN_KB_F12, "KB_F12" },
+	{ BTN_KB_F14, "KB_F14" },
+	{ BTN_KB_F15, "KB_F15" },
 	{ BTN_KB_BACKTICK, "KB_BACKTICK" },
 	{ BTN_KB_1, "KB_1" },
 	{ BTN_KB_2, "KB_2" },

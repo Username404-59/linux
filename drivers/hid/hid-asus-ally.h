@@ -90,6 +90,8 @@ enum btn_pair_index {
 #define BTN_KB_F10            0x0200090000000000
 #define BTN_KB_F11            0x0200780000000000
 #define BTN_KB_F12            0x0200070000000000
+#define BTN_KB_F14            0x0200180000000000
+#define BTN_KB_F15            0x0200100000000000
 #define BTN_KB_BACKTICK       0x02000E0000000000
 #define BTN_KB_1              0x0200160000000000
 #define BTN_KB_2              0x02001E0000000000
