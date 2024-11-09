@@ -1443,7 +1443,8 @@ static int arcturus_get_power_profile_mode(struct smu_context *smu,
 
 static int arcturus_set_power_profile_mode(struct smu_context *smu,
 					   long *input,
-					   uint32_t size)
+					   uint32_t size,
+					   bool enable)
 {
 	DpmActivityMonitorCoeffInt_t activity_monitor;
 	int workload_type = 0;
@@ -1455,8 +1456,9 @@ static int arcturus_set_power_profile_mode(struct smu_context *smu,
 		return -EINVAL;
 	}
 
-	if ((profile_mode == PP_SMC_POWER_PROFILE_CUSTOM) &&
-	     (smu->smc_fw_version >= 0x360d00)) {
+	if (enable &&
+	    (profile_mode == PP_SMC_POWER_PROFILE_CUSTOM) &&
+	    (smu->smc_fw_version >= 0x360d00)) {
 		if (size != 10)
 			return -EINVAL;
 
@@ -1520,18 +1522,18 @@ static int arcturus_set_power_profile_mode(struct smu_context *smu,
 		return -EINVAL;
 	}
 
+	if (enable)
+		smu->workload_mask |= (1 << workload_type);
+	else
+		smu->workload_mask &= ~(1 << workload_type);
 	ret = smu_cmn_send_smc_msg_with_param(smu,
 					  SMU_MSG_SetWorkloadMask,
 					  smu->workload_mask,
 					  NULL);
-	if (ret) {
+	if (ret)
 		dev_err(smu->adev->dev, "Fail to set workload type %d\n", workload_type);
-		return ret;
-	}
 
-	smu_cmn_assign_power_profile(smu);
-
-	return 0;
+	return ret;
 }
 
 static int arcturus_set_performance_level(struct smu_context *smu,

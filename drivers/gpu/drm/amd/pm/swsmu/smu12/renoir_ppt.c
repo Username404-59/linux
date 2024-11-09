@@ -862,7 +862,8 @@ static int renoir_force_clk_levels(struct smu_context *smu,
 	return ret;
 }
 
-static int renoir_set_power_profile_mode(struct smu_context *smu, long *input, uint32_t size)
+static int renoir_set_power_profile_mode(struct smu_context *smu, long *input,
+					 uint32_t size, bool enable)
 {
 	int workload_type, ret;
 	uint32_t profile_mode = input[size];
@@ -873,7 +874,7 @@ static int renoir_set_power_profile_mode(struct smu_context *smu, long *input, u
 	}
 
 	if (profile_mode == PP_SMC_POWER_PROFILE_BOOTUP_DEFAULT ||
-			profile_mode == PP_SMC_POWER_PROFILE_POWERSAVING)
+	    profile_mode == PP_SMC_POWER_PROFILE_POWERSAVING)
 		return 0;
 
 	/* conv PP_SMC_POWER_PROFILE* to WORKLOAD_PPLIB_*_BIT */
@@ -889,17 +890,17 @@ static int renoir_set_power_profile_mode(struct smu_context *smu, long *input, u
 		return -EINVAL;
 	}
 
+	if (enable)
+		smu->workload_mask |= (1 << workload_type);
+	else
+		smu->workload_mask &= ~(1 << workload_type);
 	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_ActiveProcessNotify,
 				    smu->workload_mask,
 				    NULL);
-	if (ret) {
+	if (ret)
 		dev_err_once(smu->adev->dev, "Fail to set workload type %d\n", workload_type);
-		return ret;
-	}
 
-	smu_cmn_assign_power_profile(smu);
-
-	return 0;
+	return ret;
 }
 
 static int renoir_set_peak_clock_by_device(struct smu_context *smu)
