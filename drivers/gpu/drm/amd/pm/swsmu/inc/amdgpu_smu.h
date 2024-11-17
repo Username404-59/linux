@@ -240,7 +240,6 @@ struct smu_user_dpm_profile {
 	/* user clock state information */
 	uint32_t clk_mask[SMU_CLK_COUNT];
 	uint32_t clk_dependency;
-	uint32_t user_workload_mask;
 };
 
 #define SMU_TABLE_INIT(tables, table_id, s, a, d)	\
@@ -557,12 +556,10 @@ struct smu_context {
 	uint32_t hard_min_uclk_req_from_dal;
 	bool disable_uclk_switch;
 
+	/* backend specific workload mask */
 	uint32_t workload_mask;
-	uint32_t driver_workload_mask;
-	uint32_t workload_priority[WORKLOAD_POLICY_MAX];
-	uint32_t workload_setting[WORKLOAD_POLICY_MAX];
+	/* default/user workload preference */
 	uint32_t power_profile_mode;
-	uint32_t default_power_profile_mode;
 	bool pm_enabled;
 	bool is_apu;
 
@@ -734,8 +731,10 @@ struct pptable_funcs {
 	 *                          create/set custom power profile modes.
 	 * &input: Power profile mode parameters.
 	 * &size: Size of &input.
+	 * &enable: enable/disable the profile
 	 */
-	int (*set_power_profile_mode)(struct smu_context *smu, long *input, uint32_t size);
+	int (*set_power_profile_mode)(struct smu_context *smu, long *input,
+				      uint32_t size, bool enable);
 
 	/**
 	 * @dpm_set_vcn_enable: Enable/disable VCN engine dynamic power

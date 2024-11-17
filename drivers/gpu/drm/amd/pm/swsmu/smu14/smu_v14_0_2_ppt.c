@@ -1437,21 +1437,21 @@ static int smu_v14_0_2_get_power_profile_mode(struct smu_context *smu,
 
 static int smu_v14_0_2_set_power_profile_mode(struct smu_context *smu,
 					      long *input,
-					      uint32_t size)
+					      uint32_t size,
+					      bool enable)
 {
 	DpmActivityMonitorCoeffIntExternal_t activity_monitor_external;
 	DpmActivityMonitorCoeffInt_t *activity_monitor =
 		&(activity_monitor_external.DpmActivityMonitorCoeffInt);
+	uint32_t profile_mode = input[size];
 	int workload_type, ret = 0;
 
-	smu->power_profile_mode = input[size];
-
-	if (smu->power_profile_mode >= PP_SMC_POWER_PROFILE_COUNT) {
-		dev_err(smu->adev->dev, "Invalid power profile mode %d\n", smu->power_profile_mode);
+	if (profile_mode >= PP_SMC_POWER_PROFILE_COUNT) {
+		dev_err(smu->adev->dev, "Invalid power profile mode %d\n", profile_mode);
 		return -EINVAL;
 	}
 
-	if (smu->power_profile_mode == PP_SMC_POWER_PROFILE_CUSTOM) {
+	if (enable && profile_mode == PP_SMC_POWER_PROFILE_CUSTOM) {
 		if (size != 9)
 			return -EINVAL;
 
@@ -1504,15 +1504,16 @@ static int smu_v14_0_2_set_power_profile_mode(struct smu_context *smu,
 	/* conv PP_SMC_POWER_PROFILE* to WORKLOAD_PPLIB_*_BIT */
 	workload_type = smu_cmn_to_asic_specific_index(smu,
 						       CMN2ASIC_MAPPING_WORKLOAD,
-						       smu->power_profile_mode);
+						       profile_mode);
 	if (workload_type < 0)
 		return -EINVAL;
 
+	if (enable)
+		smu->workload_mask |= (1 << workload_type);
+	else
+		smu->workload_mask &= ~(1 << workload_type);
 	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_SetWorkloadMask,
-										  smu->workload_mask, NULL);
-
-	if (!ret)
-		smu_cmn_assign_power_profile(smu);
+					      smu->workload_mask, NULL);
 
 	return ret;
 }
