@@ -20,6 +20,7 @@ static DEFINE_STATIC_KEY_FALSE(have_crc32);
 static DEFINE_STATIC_KEY_FALSE(have_pclmulqdq);
 
 DECLARE_CRC_PCLMUL_FUNCS(crc32_lsb, u32);
+DECLARE_CRC_PCLMUL_FUNCS(crc32_msb, u32);
 
 u32 crc32_le_arch(u32 crc, const u8 *p, size_t len)
 {
@@ -71,6 +72,8 @@ EXPORT_SYMBOL(crc32c_le_arch);
 
 u32 crc32_be_arch(u32 crc, const u8 *p, size_t len)
 {
+	CRC_PCLMUL(crc, p, len, crc32_msb, crc32_msb_0x04c11db7_consts,
+		   have_pclmulqdq, IS_ENABLED(CONFIG_CRC32_SLICEBY8));
 	return crc32_be_base(crc, p, len);
 }
 EXPORT_SYMBOL(crc32_be_arch);
@@ -82,6 +85,7 @@ static int __init crc32_x86_init(void)
 	if (boot_cpu_has(X86_FEATURE_PCLMULQDQ)) {
 		static_branch_enable(&have_pclmulqdq);
 		INIT_CRC_PCLMUL(crc32_lsb);
+		INIT_CRC_PCLMUL(crc32_msb);
 	}
 	return 0;
 }
