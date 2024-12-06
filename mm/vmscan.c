@@ -2620,6 +2620,96 @@ static bool can_age_anon_pages(struct pglist_data *pgdat,
 	return can_demote(pgdat->node_id, sc);
 }
 
+int vm_workingset_protection_update_handler(const struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = proc_dou8vec_minmax(table, write, buffer, lenp, ppos);
+	if (ret || !write)
+		return ret;
+
+	workingset_protection_prev_totalram = 0;
+
+	return 0;
+}
+
+static void prepare_workingset_protection(pg_data_t *pgdat, struct scan_control *sc)
+{
+	unsigned long node_mem_total;
+	struct sysinfo i;
+
+	if (!(sysctl_workingset_protection)) {
+		sc->anon_below_min = 0;
+		sc->clean_below_low = 0;
+		sc->clean_below_min = 0;
+		return;
+	}
+
+	if (likely(sysctl_anon_min_ratio  ||
+	           sysctl_clean_low_ratio ||
+		       sysctl_clean_min_ratio)) {
+#ifdef CONFIG_NUMA
+		si_meminfo_node(&i, pgdat->node_id);
+#else //CONFIG_NUMA
+		si_meminfo(&i);
+#endif //CONFIG_NUMA
+		node_mem_total = i.totalram;
+
+		if (unlikely(workingset_protection_prev_totalram != node_mem_total)) {
+			sysctl_anon_min_ratio_kb  =
+				node_mem_total * sysctl_anon_min_ratio  / 100;
+			sysctl_clean_low_ratio_kb =
+				node_mem_total * sysctl_clean_low_ratio / 100;
+			sysctl_clean_min_ratio_kb =
+				node_mem_total * sysctl_clean_min_ratio / 100;
+			workingset_protection_prev_totalram = node_mem_total;
+		}
+	}
+
+	/*
+	 * Check the number of anonymous pages to protect them from
+	 * reclaiming if their amount is below the specified.
+	 */
+	if (sysctl_anon_min_ratio) {
+		unsigned long reclaimable_anon;
+
+		reclaimable_anon =
+			node_page_state(pgdat, NR_ACTIVE_ANON) +
+			node_page_state(pgdat, NR_INACTIVE_ANON) +
+			node_page_state(pgdat, NR_ISOLATED_ANON);
+
+		sc->anon_below_min = reclaimable_anon < sysctl_anon_min_ratio_kb;
+	} else
+		sc->anon_below_min = 0;
+
+	/*
+	 * Check the number of clean file pages to protect them from
+	 * reclaiming if their amount is below the specified.
+	 */
+	if (sysctl_clean_low_ratio || sysctl_clean_min_ratio) {
+		unsigned long reclaimable_file, dirty, clean;
+
+		reclaimable_file =
+			node_page_state(pgdat, NR_ACTIVE_FILE) +
+			node_page_state(pgdat, NR_INACTIVE_FILE) +
+			node_page_state(pgdat, NR_ISOLATED_FILE);
+		dirty = node_page_state(pgdat, NR_FILE_DIRTY);
+		/*
+		 * node_page_state() sum can go out of sync since
+		 * all the values are not read at once.
+		 */
+		if (likely(reclaimable_file > dirty))
+			clean = reclaimable_file - dirty;
+		else
+			clean = 0;
+
+		sc->clean_below_low = clean < sysctl_clean_low_ratio_kb;
+		sc->clean_below_min = clean < sysctl_clean_min_ratio_kb;
+	} else {
+		sc->clean_below_low = 0;
+		sc->clean_below_min = 0;
+	}
+}
+
 #ifdef CONFIG_LRU_GEN
 
 #ifdef CONFIG_LRU_GEN_ENABLED
@@ -4073,96 +4163,6 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 		out_of_memory(&oc);
 
 		mutex_unlock(&oom_lock);
-	}
-}
-
-int vm_workingset_protection_update_handler(const struct ctl_table *table, int write,
-		void __user *buffer, size_t *lenp, loff_t *ppos)
-{
-	int ret = proc_dou8vec_minmax(table, write, buffer, lenp, ppos);
-	if (ret || !write)
-		return ret;
-
-	workingset_protection_prev_totalram = 0;
-
-	return 0;
-}
-
-static void prepare_workingset_protection(pg_data_t *pgdat, struct scan_control *sc)
-{
-	unsigned long node_mem_total;
-	struct sysinfo i;
-
-	if (!(sysctl_workingset_protection)) {
-		sc->anon_below_min = 0;
-		sc->clean_below_low = 0;
-		sc->clean_below_min = 0;
-		return;
-	}
-
-	if (likely(sysctl_anon_min_ratio  ||
-	           sysctl_clean_low_ratio ||
-		       sysctl_clean_min_ratio)) {
-#ifdef CONFIG_NUMA
-		si_meminfo_node(&i, pgdat->node_id);
-#else //CONFIG_NUMA
-		si_meminfo(&i);
-#endif //CONFIG_NUMA
-		node_mem_total = i.totalram;
-
-		if (unlikely(workingset_protection_prev_totalram != node_mem_total)) {
-			sysctl_anon_min_ratio_kb  =
-				node_mem_total * sysctl_anon_min_ratio  / 100;
-			sysctl_clean_low_ratio_kb =
-				node_mem_total * sysctl_clean_low_ratio / 100;
-			sysctl_clean_min_ratio_kb =
-				node_mem_total * sysctl_clean_min_ratio / 100;
-			workingset_protection_prev_totalram = node_mem_total;
-		}
-	}
-
-	/*
-	 * Check the number of anonymous pages to protect them from
-	 * reclaiming if their amount is below the specified.
-	 */
-	if (sysctl_anon_min_ratio) {
-		unsigned long reclaimable_anon;
-
-		reclaimable_anon =
-			node_page_state(pgdat, NR_ACTIVE_ANON) +
-			node_page_state(pgdat, NR_INACTIVE_ANON) +
-			node_page_state(pgdat, NR_ISOLATED_ANON);
-
-		sc->anon_below_min = reclaimable_anon < sysctl_anon_min_ratio_kb;
-	} else
-		sc->anon_below_min = 0;
-
-	/*
-	 * Check the number of clean file pages to protect them from
-	 * reclaiming if their amount is below the specified.
-	 */
-	if (sysctl_clean_low_ratio || sysctl_clean_min_ratio) {
-		unsigned long reclaimable_file, dirty, clean;
-
-		reclaimable_file =
-			node_page_state(pgdat, NR_ACTIVE_FILE) +
-			node_page_state(pgdat, NR_INACTIVE_FILE) +
-			node_page_state(pgdat, NR_ISOLATED_FILE);
-		dirty = node_page_state(pgdat, NR_FILE_DIRTY);
-		/*
-		 * node_page_state() sum can go out of sync since
-		 * all the values are not read at once.
-		 */
-		if (likely(reclaimable_file > dirty))
-			clean = reclaimable_file - dirty;
-		else
-			clean = 0;
-
-		sc->clean_below_low = clean < sysctl_clean_low_ratio_kb;
-		sc->clean_below_min = clean < sysctl_clean_min_ratio_kb;
-	} else {
-		sc->clean_below_low = 0;
-		sc->clean_below_min = 0;
 	}
 }
 
