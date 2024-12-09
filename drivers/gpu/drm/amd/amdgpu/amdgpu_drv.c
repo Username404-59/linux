@@ -260,6 +260,8 @@ struct amdgpu_watchdog_timer amdgpu_watchdog_timer = {
 	.period = 0x0, /* default to 0x0 (timeout disable) */
 };
 
+struct workqueue_struct *amdgpu_reclaim_wq;
+
 /**
  * DOC: ignore_min_pcap (int)
  * Ignore the minimum power cap.
@@ -2639,7 +2641,6 @@ static int amdgpu_pmops_freeze(struct device *dev)
 	struct amdgpu_device *adev = drm_to_adev(drm_dev);
 	int r;
 
-	adev->in_s4 = true;
 	r = amdgpu_device_suspend(drm_dev, true);
 	adev->in_s4 = false;
 	if (r)
@@ -3056,12 +3057,31 @@ static struct pci_driver amdgpu_kms_pci_driver = {
 	.dev_groups = amdgpu_sysfs_groups,
 };
 
+static int amdgpu_wq_init(void)
+{
+	amdgpu_reclaim_wq =
+		alloc_workqueue("amdgpu-reclaim", WQ_MEM_RECLAIM, 0);
+	if (!amdgpu_reclaim_wq)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void amdgpu_wq_fini(void)
+{
+	destroy_workqueue(amdgpu_reclaim_wq);
+}
+
 static int __init amdgpu_init(void)
 {
 	int r;
 
 	if (drm_firmware_drivers_only())
 		return -EINVAL;
+
+	r = amdgpu_wq_init();
+	if (r)
+		goto error_wq;
 
 	r = amdgpu_sync_init();
 	if (r)
@@ -3078,6 +3098,11 @@ static int __init amdgpu_init(void)
 	/* Ignore KFD init failures. Normal when CONFIG_HSA_AMD is not set. */
 	amdgpu_amdkfd_init();
 
+	if (amdgpu_pp_feature_mask & PP_OVERDRIVE_MASK) {
+		add_taint(TAINT_CPU_OUT_OF_SPEC, LOCKDEP_STILL_OK);
+		pr_crit("Overdrive is enabled, please disable it before reporting any bugs.\n");
+	}
+
 	/* let modprobe override vga console setting */
 	return pci_register_driver(&amdgpu_kms_pci_driver);
 
@@ -3085,6 +3110,9 @@ error_fence:
 	amdgpu_sync_fini();
 
 error_sync:
+	amdgpu_wq_fini();
+
+error_wq:
 	return r;
 }
 
@@ -3096,6 +3124,7 @@ static void __exit amdgpu_exit(void)
 	amdgpu_acpi_release();
 	amdgpu_sync_fini();
 	amdgpu_fence_slab_fini();
+	amdgpu_wq_fini();
 	mmu_notifier_synchronize();
 	amdgpu_xcp_drv_release();
 }
